@@ -35,14 +35,51 @@ class Queries(object):
         headers = {
             "Authorization": f"Bearer {self.access_token}",
         }
+    async def query(self, generated_query: str) -> Dict:
+        """
+        Make a request to the GraphQL API using the authentication token from
+        the environment.
+        """
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+        }
+
         try:
             async with self.semaphore:
-                r = await self.session.post("https://api.github.com/graphql",
-                                            headers=headers,
-                                            json={"query": generated_query})
-            return await r.json()
-        except:
-            print("aiohttp failed for GraphQL query")
+                r = await self.session.post(
+                    "https://api.github.com/graphql",
+                    headers=headers,
+                    json={"query": generated_query}
+                )
+
+            result = await r.json()
+
+            if "errors" in result:
+                print("GitHub GraphQL errors:")
+                for error in result["errors"]:
+                    print(error)
+
+            return result
+
+        except Exception as e:
+            print(f"aiohttp failed for GraphQL query: {e}")
+
+            async with self.semaphore:
+                r = requests.post(
+                    "https://api.github.com/graphql",
+                    headers=headers,
+                    json={"query": generated_query}
+                )
+
+            result = r.json()
+
+            if "errors" in result:
+                print("GitHub GraphQL errors:")
+                for error in result["errors"]:
+                    print(error)
+
+            return result
+
             # Fall back on non-async requests
             async with self.semaphore:
                 r = requests.post("https://api.github.com/graphql",
@@ -313,12 +350,16 @@ Languages:
                 repos += contrib_repos.get("nodes", [])
             else:
                 for repo in contrib_repos.get("nodes", []):
+                    if repo is None:
+                        continue
                     name = repo.get("nameWithOwner")
                     if name in self._ignored_repos or name in self._exclude_repos:
                         continue
                     self._ignored_repos.add(name)
 
             for repo in repos:
+                if repo is None:
+                    continue
                 name = repo.get("nameWithOwner")
                 if name in self._repos or name in self._exclude_repos:
                     continue
